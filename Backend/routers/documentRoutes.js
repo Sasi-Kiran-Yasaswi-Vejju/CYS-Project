@@ -1,0 +1,329 @@
+// Document Routes
+// Demonstrates: ENCRYPTION (AES-256), DIGITAL SIGNATURE (SHA-256), ENCODING (Base64), AUTHORIZATION
+
+const express = require('express');
+const Document = require('../models/Document');
+const User = require('../models/User');
+const { sendVerificationStatusEmail } = require('../utils/emailService');
+const { 
+  authenticateToken, 
+  authorizeStudentOnly, 
+  authorizeVerifier,
+  authorizeViewAll 
+} = require('../models/authMiddleware');
+
+const router = express.Router();
+
+// ============================================
+// UPLOAD DOCUMENT (Students Only)
+// ============================================
+// Demonstrates: ENCRYPTION, DIGITAL SIGNATURE, ENCODING, AUTHORIZATION
+
+router.post('/upload', authenticateToken, authorizeStudentOnly, async (req, res) => {
+  try {
+    const { documentType, fileName, description } = req.body;
+    
+    // Validation
+    if (!documentType || !fileName) {
+      return res.status(400).json({ error: 'Please provide documentType and fileName' });
+    }
+    
+    // AUTHORIZATION CHECK: Ensure only students can upload
+    // This is enforced by authorizeStudentOnly middleware
+    
+    // Create encrypted document with digital signature
+    const document = await Document.createEncryptedDocument(
+      { documentType, fileName, description },
+      req.user._id
+    );
+    
+    res.status(201).json({
+      message: 'Document uploaded successfully',
+      securityFeatures: {
+        encryption: 'AES-256-CBC applied to document metadata',
+        digitalSignature: 'SHA-256 hash generated for integrity verification',
+        encoding: 'Base64 encoding applied to document ID'
+      },
+      document: {
+        id: document._id,
+        encodedId: document.encodedId,
+        verificationStatus: document.verificationStatus,
+        createdAt: document.createdAt
+      }
+    });
+    
+  } catch (error) {
+    console.error('Document upload error:', error);
+    res.status(500).json({ error: 'Failed to upload document', details: error.message });
+  }
+});
+
+// ============================================
+// GET MY DOCUMENTS (Student - Own Documents)
+// ============================================
+// Demonstrates: DECRYPTION, AUTHORIZATION
+
+router.get('/my-documents', authenticateToken, async (req, res) => {
+  try {
+    // Students can only view their own documents
+    // Officers/Admins should use /all-documents endpoint
+    
+    const documents = await Document.find({ studentId: req.user._id }).sort('-createdAt');
+    
+    // Decrypt each document
+    const decryptedDocuments = documents.map(doc => {
+      try {
+        return doc.getDecryptedData();
+      } catch (error) {
+        console.error('Decryption error for document:', doc._id, error);
+        return null;
+      }
+    }).filter(doc => doc !== null);
+    
+    res.json({
+      message: 'Documents retrieved and decrypted',
+      securityNote: 'AES-256 decryption applied, digital signature verified',
+      count: decryptedDocuments.length,
+      documents: decryptedDocuments
+    });
+    
+  } catch (error) {
+    console.error('Fetch documents error:', error);
+    res.status(500).json({ error: 'Failed to fetch documents' });
+  }
+});
+
+// ============================================
+// GET ALL DOCUMENTS (Officers & Admins Only)
+// ============================================
+// Demonstrates: AUTHORIZATION (Access Control Matrix)
+
+router.get('/all-documents', authenticateToken, authorizeViewAll, async (req, res) => {
+  try {
+    // AUTHORIZATION: Only officers and admins can view all documents
+    // Enforced by authorizeViewAll middleware
+    
+    const documents = await Document.find()
+      .populate('studentId', 'name email studentId department')
+      .populate('verifiedBy', 'name email role')
+      .sort('-createdAt');
+    
+    // Decrypt each document
+    const decryptedDocuments = documents.map(doc => {
+      try {
+        const decrypted = doc.getDecryptedData();
+        return {
+          ...decrypted,
+          student: doc.studentId,
+          verifier: doc.verifiedBy
+        };
+      } catch (error) {
+        console.error('Decryption error:', error);
+        return null;
+      }
+    }).filter(doc => doc !== null);
+    
+    res.json({
+      message: 'All documents retrieved',
+      securityNote: 'Access granted via Access Control Matrix - Officer/Admin role',
+      count: decryptedDocuments.length,
+      documents: decryptedDocuments
+    });
+    
+  } catch (error) {
+    console.error('Fetch all documents error:', error);
+    res.status(500).json({ error: 'Failed to fetch documents' });
+  }
+});
+
+// ============================================
+// GET SINGLE DOCUMENT BY ID
+// ============================================
+// Demonstrates: DECODING (Base64), DECRYPTION, AUTHORIZATION
+
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const document = await Document.findById(req.params.id)
+      .populate('studentId', 'name email studentId department')
+      .populate('verifiedBy', 'name email role');
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    // AUTHORIZATION: Check if user has permission to view
+    const isOwner = document.studentId._id.toString() === req.user._id.toString();
+    const canViewAll = req.user.role === 'officer' || req.user.role === 'admin';
+    
+    if (!isOwner && !canViewAll) {
+      return res.status(403).json({ 
+        error: 'Access denied. You do not have permission to view this document.',
+        securityNote: 'Authorization failed - not owner and not officer/admin'
+      });
+    }
+    
+    // DECRYPTION & VERIFICATION
+    const decryptedData = document.getDecryptedData();
+    
+    res.json({
+      message: 'Document retrieved successfully',
+      securityNote: 'Decrypted with AES-256, digital signature verified',
+      document: {
+        ...decryptedData,
+        student: document.studentId,
+        verifier: document.verifiedBy
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get document error:', error);
+    res.status(500).json({ error: 'Failed to retrieve document' });
+  }
+});
+
+// ============================================
+// VERIFY/REJECT DOCUMENT (Officers & Admins Only)
+// ============================================
+// Demonstrates: AUTHORIZATION (Access Control)
+
+router.patch('/:id/verify', authenticateToken, authorizeVerifier, async (req, res) => {
+  try {
+    const { status, comments } = req.body; // status: 'verified' or 'rejected'
+    
+    // Validation
+    if (!status || !['verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be "verified" or "rejected"' });
+    }
+    
+    // Find document
+    const document = await Document.findById(req.params.id)
+      .populate('studentId', 'name email');
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    // Check if already verified
+    if (document.verificationStatus !== 'pending') {
+      return res.status(400).json({ 
+        error: `Document already ${document.verificationStatus}`,
+        currentStatus: document.verificationStatus
+      });
+    }
+    
+    // Update verification status
+    document.verificationStatus = status;
+    document.verifiedBy = req.user._id;
+    document.verifiedAt = new Date();
+    document.verifierComments = comments || '';
+    
+    await document.save();
+    
+    // Get decrypted data for email
+    const decryptedData = document.getDecryptedData();
+    
+    // Send email notification to student
+    sendVerificationStatusEmail(
+      document.studentId.email,
+      document.studentId.name,
+      decryptedData.documentType,
+      status,
+      comments
+    ).catch(err => console.error('Email notification failed:', err));
+    
+    res.json({
+      message: `Document ${status} successfully`,
+      securityNote: 'Authorization verified - Officer/Admin role required',
+      document: {
+        id: document._id,
+        verificationStatus: document.verificationStatus,
+        verifiedBy: req.user.name,
+        verifiedAt: document.verifiedAt,
+        comments: document.verifierComments
+      }
+    });
+    
+  } catch (error) {
+    console.error('Verify document error:', error);
+    res.status(500).json({ error: 'Failed to verify document' });
+  }
+});
+
+// ============================================
+// GET DOCUMENT BY ENCODED ID
+// ============================================
+// Demonstrates: DECODING (Base64)
+
+router.get('/encoded/:encodedId', authenticateToken, async (req, res) => {
+  try {
+    // DECODING: Decode Base64 encoded ID
+    const decodedString = Document.decodeDocumentId(req.params.encodedId);
+    
+    // Find document by encoded ID
+    const document = await Document.findOne({ encodedId: req.params.encodedId })
+      .populate('studentId', 'name email studentId department')
+      .populate('verifiedBy', 'name email role');
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    // Authorization check
+    const isOwner = document.studentId._id.toString() === req.user._id.toString();
+    const canViewAll = req.user.role === 'officer' || req.user.role === 'admin';
+    
+    if (!isOwner && !canViewAll) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Decrypt document
+    const decryptedData = document.getDecryptedData();
+    
+    res.json({
+      message: 'Document retrieved via encoded ID',
+      securityNote: 'Base64 decoding applied to document identifier',
+      decodedString: decodedString.substring(0, 30) + '...', // Show partial for demo
+      document: {
+        ...decryptedData,
+        student: document.studentId,
+        verifier: document.verifiedBy
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get encoded document error:', error);
+    res.status(500).json({ error: 'Failed to retrieve document' });
+  }
+});
+
+// ============================================
+// DELETE DOCUMENT (Student - Own Documents)
+// ============================================
+
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    const document = await Document.findById(req.params.id);
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    // Only owner or admin can delete
+    const isOwner = document.studentId.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+    
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    await document.deleteOne();
+    
+    res.json({ message: 'Document deleted successfully' });
+    
+  } catch (error) {
+    console.error('Delete document error:', error);
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
+module.exports = router;
