@@ -100,28 +100,31 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // MULTI-FACTOR AUTHENTICATION: Generate and send OTP
-    const otp = user.generateOTP();
-    await user.save();
-    
-    // Send OTP via email
-    try {
-      await sendOTPEmail(user.email, user.name, otp);
-      
-      res.json({
-        message: 'Login credentials verified. OTP sent to your email.',
-        securityNote: 'Multi-Factor Authentication (MFA) - Email OTP required',
-        requiresOTP: true,
-        userId: user._id,
-        expiresIn: `${process.env.OTP_EXPIRY || 5} minutes`
-      });
-      
-    } catch (emailError) {
-      console.error('Email error:', emailError);
-      res.status(500).json({ 
-        error: 'Failed to send OTP email. Please try again.' 
-      });
-    }
+    // MULTI-FACTOR AUTHENTICATION: Generate OTP
+const otp = user.generateOTP();
+await user.save();
+
+// ===============================
+// OTP DELIVERY (DEV SAFE BYPASS)
+// ===============================
+try {
+  await sendOTPEmail(user.email, user.name, otp);
+
+
+  res.json({
+    message: 'Login credentials verified. OTP generated.',
+    securityNote: 'Multi-Factor Authentication (MFA) - OTP required',
+    requiresOTP: true,
+    userId: user._id,
+    expiresIn: `${process.env.OTP_EXPIRY || 5} minutes`
+  });
+
+}catch (error) {
+  console.error('OTP email error:', error);
+  res.status(500).json({ error: 'Failed to send OTP' });
+}
+
+
     
   } catch (error) {
     console.error('Login error:', error);

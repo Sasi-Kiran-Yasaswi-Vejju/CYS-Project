@@ -1,15 +1,17 @@
 // 23CSE313 - Foundations of Cyber Security LAB Evaluation 1
 // Secure Placement Drive Document Verification Portal - Backend Server
+require('dotenv').config();
+
 console.log("EMAIL USER:", process.env.EMAIL_USER);
 console.log("EMAIL PASS EXISTS:", !!process.env.EMAIL_PASS);
 
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
+//const dotenv = require('dotenv');
 
 // Load environment variables
-dotenv.config();
+
 
 const app = express();
 

@@ -1,5 +1,6 @@
 // Document Routes
 // Demonstrates: ENCRYPTION (AES-256), DIGITAL SIGNATURE (SHA-256), ENCODING (Base64), AUTHORIZATION
+const multer = require('multer');
 
 const express = require('express');
 const Document = require('../models/Document');
@@ -13,6 +14,19 @@ const {
 } = require('../models/authMiddleware');
 
 const router = express.Router();
+// Multer configuration (in-memory storage for security)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== 'application/pdf') {
+      return cb(new Error('Only PDF files are allowed'), false);
+    }
+    cb(null, true);
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5 MB limit
+  }
+});
 
 // ============================================
 // UPLOAD DOCUMENT (Students Only)
@@ -57,6 +71,53 @@ router.post('/upload', authenticateToken, authorizeStudentOnly, async (req, res)
     res.status(500).json({ error: 'Failed to upload document', details: error.message });
   }
 });
+// ============================================
+// UPLOAD PDF DOCUMENT (Students Only)
+// ============================================
+// Demonstrates: FILE UPLOAD, ENCRYPTION, HASHING, AUTHORIZATION
+
+router.post(
+  '/upload-pdf',
+  authenticateToken,
+  authorizeStudentOnly,
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      // Ensure file is provided
+      if (!req.file) {
+        return res.status(400).json({ error: 'PDF file is required' });
+      }
+
+      // Create encrypted PDF document
+      const document = await Document.createEncryptedPdfDocument(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
+        req.user._id
+      );
+
+      res.status(201).json({
+        message: 'PDF document uploaded securely',
+        securityFeatures: {
+          encryption: 'AES-256 applied to PDF file',
+          digitalSignature: 'SHA-256 hash generated from file',
+          storage: 'In-memory upload, encrypted before persistence'
+        },
+        document: {
+          id: document._id,
+          encodedId: document.encodedId,
+          uploadMethod: document.uploadMethod,
+          verificationStatus: document.verificationStatus,
+          createdAt: document.createdAt
+        }
+      });
+
+    } catch (error) {
+      console.error('PDF upload error:', error);
+      res.status(500).json({ error: 'Failed to upload PDF document' });
+    }
+  }
+);
 
 // ============================================
 // GET MY DOCUMENTS (Student - Own Documents)
@@ -325,5 +386,49 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to delete document' });
   }
 });
+
+// ============================================
+// VIEW / DOWNLOAD PDF DOCUMENT
+// Demonstrates: DECRYPTION, AUTHORIZATION
+// ============================================
+
+router.get('/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const document = await Document.findById(req.params.id);
+
+    if (!document || document.uploadMethod !== 'pdf') {
+      return res.status(404).json({ error: 'PDF document not found' });
+    }
+
+    // Authorization
+    const isOwner = document.studentId.toString() === req.user._id.toString();
+    const canViewAll = req.user.role === 'admin' || req.user.role === 'officer';
+
+    if (!isOwner && !canViewAll) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // 📊 AUDIT LOG (ADD HERE)
+    console.log(
+      `📄 PDF viewed by ${req.user.email} | role=${req.user.role} | docId=${document._id}`
+    );
+    // 🔓 Decrypt PDF
+    const decryptedBase64 = Document.decrypt(document.encryptedFile);
+    const pdfBuffer = Buffer.from(decryptedBase64, 'base64');
+
+    // 📄 Send PDF
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="document.pdf"',
+    });
+
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('PDF fetch error:', error);
+    res.status(500).json({ error: 'Failed to retrieve PDF' });
+  }
+});
+
 
 module.exports = router;

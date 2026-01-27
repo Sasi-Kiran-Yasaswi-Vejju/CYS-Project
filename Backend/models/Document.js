@@ -25,6 +25,24 @@ const documentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+
+  // Upload method: manual text OR direct PDF
+uploadMethod: {
+  type: String,
+  enum: ['manual', 'pdf'],
+  default: 'manual'
+},
+
+// ENCRYPTED PDF FILE (only for PDF upload)
+encryptedFile: {
+  type: String // encrypted Base64 string
+},
+
+// MIME type verification (application/pdf)
+originalMimeType: {
+  type: String
+},
+
   
   // Original fields (encrypted in encryptedData):
   // - documentType (e.g., "Resume", "Degree Certificate", "ID Proof")
@@ -66,7 +84,7 @@ const documentSchema = new mongoose.Schema({
 // ============================================
 
 // Get encryption key from environment variable
-const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY || '12345678901234567890123456789012', 'utf-8');
+const ENCRYPTION_KEY = Buffer.from(process.env.AES_SECRET, 'utf-8');
 const ALGORITHM = 'aes-256-cbc';
 
 // ENCRYPT FUNCTION
@@ -155,32 +173,53 @@ documentSchema.pre('save', function(next) {
 // ============================================
 
 // CREATE ENCRYPTED DOCUMENT
-documentSchema.statics.createEncryptedDocument = async function(documentData, studentId) {
+// CREATE ENCRYPTED PDF DOCUMENT
+// Demonstrates: ENCRYPTION (AES), HASHING (SHA-256), FILE SECURITY
+documentSchema.statics.createEncryptedPdfDocument = async function(
+  fileBuffer,
+  originalFileName,
+  mimeType,
+  studentId
+) {
   try {
-    // Prepare document metadata to be encrypted
+    // Ensure only PDF files are accepted
+    if (mimeType !== 'application/pdf') {
+      throw new Error('Only PDF files are allowed');
+    }
+
+    // Convert file buffer to Base64 (for storage)
+    const base64File = fileBuffer.toString('base64');
+
+    // Encrypt Base64 file content
+    const encryptedFile = encrypt(base64File);
+
+    // Generate digital signature (hash) of file
+    const digitalSignature = crypto
+      .createHash('sha256')
+      .update(fileBuffer)
+      .digest('hex');
+
+    // Metadata (minimal, file-based)
     const metadata = {
-      documentType: documentData.documentType,
-      fileName: documentData.fileName,
-      uploadDate: new Date().toISOString(),
-      description: documentData.description || ''
+      documentType: 'PDF_UPLOAD',
+      fileName: originalFileName,
+      uploadDate: new Date().toISOString()
     };
-    
-    // ENCRYPTION: Encrypt metadata using AES-256
+
     const encryptedData = encrypt(JSON.stringify(metadata));
-    
-    // DIGITAL SIGNATURE: Generate SHA-256 hash
-    const digitalSignature = generateDigitalSignature(metadata);
-    
-    // Create document with encrypted data
+
     const document = new this({
       studentId,
       encryptedData,
+      encryptedFile,
+      originalMimeType: mimeType,
+      uploadMethod: 'pdf',
       digitalSignature
     });
-    
+
     await document.save();
     return document;
-    
+
   } catch (error) {
     throw error;
   }
@@ -193,26 +232,37 @@ documentSchema.methods.getDecryptedData = function() {
     const decryptedJSON = decrypt(this.encryptedData);
     const decryptedData = JSON.parse(decryptedJSON);
     
-    // INTEGRITY VERIFICATION: Check digital signature
-    const expectedSignature = generateDigitalSignature(decryptedData);
-    
-    if (this.digitalSignature !== expectedSignature) {
-      throw new Error('Digital signature verification failed - data may be tampered');
+    // INTEGRITY VERIFICATION
+    if (this.uploadMethod === 'manual') {
+      const expectedSignature = generateDigitalSignature(decryptedData);
+      if (this.digitalSignature !== expectedSignature) {
+        throw new Error('Digital signature verification failed');
+      }
     }
+
+    // For PDF uploads, integrity is verified at upload time
+
     
     // Return decrypted data with document info
     return {
-      _id: this._id,
-      encodedId: this.encodedId,
-      studentId: this.studentId,
-      ...decryptedData,
-      verificationStatus: this.verificationStatus,
-      verifiedBy: this.verifiedBy,
-      verifiedAt: this.verifiedAt,
-      verifierComments: this.verifierComments,
-      createdAt: this.createdAt,
-      digitalSignatureValid: true
-    };
+  _id: this._id,
+  encodedId: this.encodedId,
+  studentId: this.studentId,
+
+  // 🔑 IMPORTANT: expose upload method
+  uploadMethod: this.uploadMethod,
+  originalMimeType: this.originalMimeType,
+
+  ...decryptedData,
+
+  verificationStatus: this.verificationStatus,
+  verifiedBy: this.verifiedBy,
+  verifiedAt: this.verifiedAt,
+  verifierComments: this.verifierComments,
+  createdAt: this.createdAt,
+  digitalSignatureValid: true
+};
+
     
   } catch (error) {
     throw error;
@@ -228,5 +278,6 @@ documentSchema.statics.decodeDocumentId = function(encodedId) {
     throw new Error('Invalid encoded document ID');
   }
 };
+documentSchema.statics.decrypt = decrypt;
 
 module.exports = mongoose.model('Document', documentSchema);

@@ -55,14 +55,14 @@ function SecurityLevels() {
                 <tr>
                   <td><strong>Officer</strong></td>
                   <td>❌</td>
-                  <td>❌</td>
+                  <td>✅</td>
                   <td>✅</td>
                   <td>✅</td>
                 </tr>
                 <tr>
                   <td><strong>Admin</strong></td>
                   <td>❌</td>
-                  <td>❌</td>
+                  <td>✅</td>
                   <td>✅</td>
                   <td>✅</td>
                 </tr>

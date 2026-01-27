@@ -1,5 +1,6 @@
 // Email Service using Nodemailer
 // Demonstrates: Multi-Factor Authentication (Email OTP), Security Notifications
+
 console.log("📧 EMAIL USER:", process.env.EMAIL_USER);
 console.log("📧 EMAIL PASS EXISTS:", !!process.env.EMAIL_PASS);
 
@@ -27,9 +28,13 @@ const createTransporter = () => {
 const sendOTPEmail = async (email, name, otp) => {
   try {
     const transporter = createTransporter();
-    
+
+    // 🔐 VERIFY TRANSPORTER (IMPORTANT – catches Gmail auth issues)
+    await transporter.verify();
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      // ✅ Proper "from" format required by Gmail
+      from: `"Placement Verification Portal" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: '🔐 OTP for Secure Login - Placement Verification Portal',
       html: `
@@ -57,13 +62,13 @@ const sendOTPEmail = async (email, name, otp) => {
         </div>
       `
     };
-    
+
     const info = await transporter.sendMail(mailOptions);
     console.log('✅ OTP Email sent:', info.messageId);
     return true;
-    
+
   } catch (error) {
-    console.error('❌ Email sending failed:', error);
+    console.error('❌ Email sending failed (OTP):', error);
     throw new Error('Failed to send OTP email');
   }
 };
@@ -75,12 +80,15 @@ const sendOTPEmail = async (email, name, otp) => {
 const sendVerificationStatusEmail = async (email, name, documentType, status, comments) => {
   try {
     const transporter = createTransporter();
-    
+
+    // 🔐 VERIFY TRANSPORTER
+    await transporter.verify();
+
     const statusColor = status === 'verified' ? '#27ae60' : '#e74c3c';
     const statusText = status === 'verified' ? 'VERIFIED ✓' : 'REJECTED ✗';
-    
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `"Placement Verification Portal" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: `Document Verification Status: ${documentType}`,
       html: `
@@ -91,7 +99,11 @@ const sendVerificationStatusEmail = async (email, name, documentType, status, co
           
           <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
             <p><strong>Document Type:</strong> ${documentType}</p>
-            <p><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></p>
+            <p><strong>Status:</strong> 
+              <span style="color: ${statusColor}; font-weight: bold;">
+                ${statusText}
+              </span>
+            </p>
             ${comments ? `<p><strong>Verifier Comments:</strong> ${comments}</p>` : ''}
           </div>
           
@@ -105,15 +117,14 @@ const sendVerificationStatusEmail = async (email, name, documentType, status, co
         </div>
       `
     };
-    
+
     const info = await transporter.sendMail(mailOptions);
     console.log('✅ Verification status email sent:', info.messageId);
     return true;
-    
+
   } catch (error) {
-    console.error('❌ Email sending failed:', error);
-    // Don't throw error, as verification should succeed even if email fails
-    return false;
+    console.error('❌ Email sending failed (Verification):', error);
+    return false; // verification should not fail even if email fails
   }
 };
 
@@ -124,9 +135,19 @@ const sendVerificationStatusEmail = async (email, name, documentType, status, co
 const sendWelcomeEmail = async (email, name, role) => {
   try {
     const transporter = createTransporter();
-    
+
+    // 🔐 VERIFY TRANSPORTER
+    transporter.verify((error, success) => {
+    if (error) {
+      console.error('❌ SMTP VERIFY FAILED:', error);
+    } else {
+      console.log('✅ SMTP SERVER READY');
+    }
+    });
+
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `"Placement Verification Portal" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: '🎉 Welcome to Placement Verification Portal',
       html: `
@@ -158,16 +179,20 @@ const sendWelcomeEmail = async (email, name, role) => {
         </div>
       `
     };
-    
+
     await transporter.sendMail(mailOptions);
     console.log('✅ Welcome email sent');
     return true;
-    
+
   } catch (error) {
     console.error('❌ Welcome email failed:', error);
     return false;
   }
 };
+
+// ============================================
+// EXPORT FUNCTIONS
+// ============================================
 
 module.exports = {
   sendOTPEmail,

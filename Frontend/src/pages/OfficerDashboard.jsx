@@ -47,6 +47,23 @@ function OfficerDashboard({ user, onLogout }) {
       alert(error.response?.data?.error || 'Verification failed');
     }
   };
+  const viewPdf = async (docId) => {
+    try {
+      const response = await api.get(`/documents/${docId}/pdf`, {
+        responseType: 'blob'
+      });
+
+      const fileURL = window.URL.createObjectURL(
+        new Blob([response.data], { type: 'application/pdf' })
+      );
+
+      window.open(fileURL, '_blank');
+    } catch (error) {
+      alert('Failed to open PDF');
+      console.error(error);
+    }
+  };
+
 
   const getFilteredDocuments = () => {
     if (filter === 'all') return documents;
@@ -168,6 +185,16 @@ function OfficerDashboard({ user, onLogout }) {
                     <span className="tag">🔓 Decrypted (AES-256)</span>
                     <span className="tag">✓ Signature Valid (SHA-256)</span>
                   </div>
+                  {doc.uploadMethod === 'pdf' && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => viewPdf(doc._id)}
+                      style={{ marginTop: '10px' }}
+                    >
+                      📄 View / Download PDF
+                    </button>
+                  )}
+
 
                   {doc.verificationStatus === 'pending' ? (
                     <button 

@@ -7,6 +7,23 @@ import api from '../components/api';
 import './Dashboard.css';
 
 function StudentDashboard({ user, onLogout }) {
+  const viewPdf = async (docId) => {
+    try {
+      const response = await api.get(`/documents/${docId}/pdf`, {
+        responseType: 'blob'
+      });
+
+      const fileURL = window.URL.createObjectURL(
+        new Blob([response.data], { type: 'application/pdf' })
+      );
+
+      window.open(fileURL, '_blank');
+    } catch (error) {
+      alert('Failed to open PDF');
+      console.error(error);
+    }
+  };
+
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
@@ -17,6 +34,11 @@ function StudentDashboard({ user, onLogout }) {
   });
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState('');
+
+  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfUploadError, setPdfUploadError] = useState('');
+  const [pdfUploadSuccess, setPdfUploadSuccess] = useState('');
+
 
   useEffect(() => {
     fetchDocuments();
@@ -48,6 +70,36 @@ function StudentDashboard({ user, onLogout }) {
       setUploadError(error.response?.data?.error || 'Upload failed');
     }
   };
+
+const handlePdfUpload = async (e) => {
+  e.preventDefault();
+  setPdfUploadError('');
+  setPdfUploadSuccess('');
+
+  if (!pdfFile) {
+    setPdfUploadError('Please select a PDF file');
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', pdfFile);
+
+    await api.post('/documents/upload-pdf', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+
+    setPdfUploadSuccess('PDF uploaded, encrypted, and signed successfully!');
+    setPdfFile(null);
+    setShowUpload(false);
+    fetchDocuments();
+  } catch (error) {
+    setPdfUploadError(error.response?.data?.error || 'PDF upload failed');
+  }
+};
+
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -144,6 +196,35 @@ function StudentDashboard({ user, onLogout }) {
               <button type="submit" className="btn-primary">
                 Upload & Encrypt
               </button>
+              <hr style={{ margin: '20px 0' }} />
+
+              <h4>OR Upload PDF Directly</h4>
+
+              {pdfUploadError && (
+                <div className="error-message">{pdfUploadError}</div>
+              )}
+
+              {pdfUploadSuccess && (
+                <div className="success-message">{pdfUploadSuccess}</div>
+              )}
+
+              <div className="form-group">
+                <label>Select PDF File</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setPdfFile(e.target.files[0])}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handlePdfUpload}
+              >
+                Upload PDF Securely
+              </button>
+
             </form>
 
             <div className="encryption-note">
@@ -165,11 +246,16 @@ function StudentDashboard({ user, onLogout }) {
                 const badge = getStatusBadge(doc.verificationStatus);
                 return (
                   <div key={doc._id} className="document-card">
-                    <div className="doc-header">
+                      <div className="doc-header">
                       <h4>{doc.documentType}</h4>
                       <span className={`badge ${badge.class}`}>{badge.text}</span>
                     </div>
-                    <p className="doc-filename">{doc.fileName}</p>
+                    <p className="doc-filename">{doc.fileName || 'Encrypted PDF Document'}</p>
+                    {doc.uploadMethod === 'pdf' && (
+                    <p className="doc-detail">
+                      <strong>Upload Type:</strong> Secure PDF Upload
+                    </p>
+                    )}
                     <p className="doc-detail"><strong>Uploaded:</strong> {new Date(doc.uploadDate).toLocaleDateString()}</p>
                     {doc.description && (
                       <p className="doc-detail"><strong>Description:</strong> {doc.description}</p>
@@ -191,6 +277,20 @@ function StudentDashboard({ user, onLogout }) {
                       <span className="tag">🔐 AES-256 Encrypted</span>
                       <span className="tag">✓ SHA-256 Signed</span>
                     </div>
+
+                    {/* ===== PDF VIEW BUTTON (ONLY FOR PDF UPLOADS) ===== */}
+                    {doc.uploadMethod === 'pdf' && (
+                      <div style={{ marginTop: '10px' }}>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => viewPdf(doc._id)}
+                        >
+                          📄 View / Download PDF
+                        </button>
+
+                      </div>
+                    )}
+
                   </div>
                 );
               })}
