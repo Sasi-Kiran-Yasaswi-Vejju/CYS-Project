@@ -32,8 +32,8 @@ The project applies **cryptographic and security mechanisms** in a real-world we
 
 ---
 
-## 🏗️ Project Architecture
-'''
+## 🏗️ Project Structure
+
 cys/
 ├── Backend/
 │ ├── models/ # MongoDB Schemas (User, Document)
@@ -52,7 +52,6 @@ cys/
 │ └── package.json # Project dependencies
 │
 └── README.md
-'''
 
 ---
 
