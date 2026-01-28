@@ -36,20 +36,22 @@ The project applies **cryptographic and security mechanisms** in a real-world we
 
 cys/
 ├── Backend/
-│   ├── models/           # MongoDB Schemas (User, Document)
-│   ├── routers/          # API Route definitions (auth, document, user)
-│   ├── utils/            # Logic for Encryption & Security
-│   ├── authMiddleware.js # Security layer for protected routes
-│   ├── server.js         # Main entry point (Express app)
-│   └── .env              # Environment variables
+│ ├── models/ # MongoDB Schemas (User, Document)
+│ ├── routers/ # API route definitions
+│ ├── utils/ # Encryption & security logic
+│ ├── authMiddleware.js # JWT-based route protection
+│ ├── server.js # Express server entry point
+│ └── .env # Environment variables
+│
 ├── Frontend/
-│   ├── src/
-│   │   ├── components/   # Reusable UI widgets
-│   │   ├── pages/        # Main application screens
-│   │   └── App.jsx       # React entry point
-│   └── pubspec.yaml      # Flutter dependencies
+│ ├── src/
+│ │ ├── components/ # Reusable React components
+│ │ ├── pages/ # Application pages
+│ │ └── App.jsx # Main React component
+│ ├── public/
+│ └── package.json # Project dependencies
+│
 └── README.md
-
 
 
 ---
