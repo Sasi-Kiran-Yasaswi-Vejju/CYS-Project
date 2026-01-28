@@ -33,44 +33,60 @@ const upload = multer({
 // ============================================
 // Demonstrates: ENCRYPTION, DIGITAL SIGNATURE, ENCODING, AUTHORIZATION
 
-router.post('/upload', authenticateToken, authorizeStudentOnly, async (req, res) => {
-  try {
-    const { documentType, fileName, description } = req.body;
-    
-    // Validation
-    if (!documentType || !fileName) {
-      return res.status(400).json({ error: 'Please provide documentType and fileName' });
-    }
-    
-    // AUTHORIZATION CHECK: Ensure only students can upload
-    // This is enforced by authorizeStudentOnly middleware
-    
-    // Create encrypted document with digital signature
-    const document = await Document.createEncryptedDocument(
-      { documentType, fileName, description },
-      req.user._id
-    );
-    
-    res.status(201).json({
-      message: 'Document uploaded successfully',
-      securityFeatures: {
-        encryption: 'AES-256-CBC applied to document metadata',
-        digitalSignature: 'SHA-256 hash generated for integrity verification',
-        encoding: 'Base64 encoding applied to document ID'
-      },
-      document: {
-        id: document._id,
-        encodedId: document.encodedId,
-        verificationStatus: document.verificationStatus,
-        createdAt: document.createdAt
+router.post(
+  '/upload',
+  authenticateToken,
+  authorizeStudentOnly,
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      const { documentType, description } = req.body;
+
+      // Rule: at least one input required
+      if (!req.file && !description) {
+        return res.status(400).json({
+          error: 'Please upload a PDF or enter description'
+        });
       }
-    });
-    
-  } catch (error) {
-    console.error('Document upload error:', error);
-    res.status(500).json({ error: 'Failed to upload document', details: error.message });
+
+      let document;
+
+      // CASE 1: PDF uploaded
+      if (req.file) {
+        document = await Document.createEncryptedPdfDocument(
+          req.file.buffer,
+          req.file.originalname,
+          req.file.mimetype,
+          req.user._id
+        );
+      }
+      // CASE 2: No file → metadata only
+      else {
+        document = await Document.createEncryptedDocument(
+          {
+            documentType,
+            fileName: null,
+            description
+          },
+          req.user._id
+        );
+      }
+
+      res.status(201).json({
+        message: 'Document uploaded securely',
+        document
+      });
+
+    } catch (error) {
+      console.error('Document upload error:', error);
+      res.status(500).json({
+        error: 'Failed to upload document',
+        details: error.message
+      });
+    }
   }
-});
+);
+
 // ============================================
 // UPLOAD PDF DOCUMENT (Students Only)
 // ============================================

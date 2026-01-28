@@ -224,6 +224,43 @@ documentSchema.statics.createEncryptedPdfDocument = async function(
     throw error;
   }
 };
+// ============================================
+// CREATE ENCRYPTED METADATA DOCUMENT (NO FILE)
+// ============================================
+
+documentSchema.statics.createEncryptedDocument = async function (
+  data,
+  studentId
+) {
+  try {
+    const metadata = {
+      documentType: data.documentType,
+      fileName: data.fileName || 'NO_FILE_ATTACHED',
+      description: data.description || '',
+      uploadDate: new Date().toISOString()
+    };
+
+    // Encrypt metadata
+    const encryptedData = encrypt(JSON.stringify(metadata));
+
+    // Digital signature for integrity
+    const digitalSignature = generateDigitalSignature(metadata);
+
+    const document = new this({
+      studentId,
+      encryptedData,
+      uploadMethod: 'manual',
+      digitalSignature
+    });
+
+    await document.save();
+    return document;
+
+  } catch (error) {
+    throw error;
+  }
+};
+
 
 // DECRYPT AND RETRIEVE DOCUMENT
 documentSchema.methods.getDecryptedData = function() {

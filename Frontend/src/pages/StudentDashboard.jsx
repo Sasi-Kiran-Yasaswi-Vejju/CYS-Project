@@ -27,17 +27,13 @@ function StudentDashboard({ user, onLogout }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    documentType: 'Resume',
-    fileName: '',
-    description: ''
-  });
+
+  const [documentType, setDocumentType] = useState('Resume');
+  const [description, setDescription] = useState('');
+  const [file, setFile] = useState(null);
+
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState('');
-
-  const [pdfFile, setPdfFile] = useState(null);
-  const [pdfUploadError, setPdfUploadError] = useState('');
-  const [pdfUploadSuccess, setPdfUploadSuccess] = useState('');
 
 
   useEffect(() => {
@@ -55,50 +51,39 @@ function StudentDashboard({ user, onLogout }) {
     }
   };
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    setUploadError('');
-    setUploadSuccess('');
-
-    try {
-      const response = await api.post('/documents/upload', uploadForm);
-      setUploadSuccess('Document uploaded and encrypted successfully!');
-      setUploadForm({ documentType: 'Resume', fileName: '', description: '' });
-      setShowUpload(false);
-      fetchDocuments();
-    } catch (error) {
-      setUploadError(error.response?.data?.error || 'Upload failed');
-    }
-  };
-
-const handlePdfUpload = async (e) => {
+const handleUpload = async (e) => {
   e.preventDefault();
-  setPdfUploadError('');
-  setPdfUploadSuccess('');
+  setUploadError('');
+  setUploadSuccess('');
 
-  if (!pdfFile) {
-    setPdfUploadError('Please select a PDF file');
+  if (!file && !description) {
+    setUploadError('Please upload a PDF or enter description');
     return;
   }
 
   try {
     const formData = new FormData();
-    formData.append('file', pdfFile);
+    formData.append('documentType', documentType);
+    if (description) formData.append('description', description);
+    if (file) formData.append('file', file);
 
-    await api.post('/documents/upload-pdf', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+    await api.post('/documents/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
     });
 
-    setPdfUploadSuccess('PDF uploaded, encrypted, and signed successfully!');
-    setPdfFile(null);
+    setUploadSuccess('Document uploaded securely!');
+    setFile(null);
+    setDescription('');
     setShowUpload(false);
     fetchDocuments();
+
   } catch (error) {
-    setPdfUploadError(error.response?.data?.error || 'PDF upload failed');
+    setUploadError(error.response?.data?.error || 'Upload failed');
   }
 };
+
+
+
 
 
   const getStatusBadge = (status) => {
@@ -155,77 +140,45 @@ const handlePdfUpload = async (e) => {
           <div className="upload-form-container">
             <h3>Upload New Document</h3>
             <form onSubmit={handleUpload} className="upload-form">
-              {uploadError && <div className="error-message">{uploadError}</div>}
-              {uploadSuccess && <div className="success-message">{uploadSuccess}</div>}
 
-              <div className="form-group">
-                <label>Document Type</label>
-                <select
-                  value={uploadForm.documentType}
-                  onChange={(e) => setUploadForm({...uploadForm, documentType: e.target.value})}
-                >
-                  <option value="Resume">Resume</option>
-                  <option value="Degree Certificate">Degree Certificate</option>
-                  <option value="ID Proof">ID Proof</option>
-                  <option value="Marksheet">Marksheet</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
+            {uploadError && <div className="error-message">{uploadError}</div>}
+            {uploadSuccess && <div className="success-message">{uploadSuccess}</div>}
 
-              <div className="form-group">
-                <label>File Name</label>
-                <input
-                  type="text"
-                  value={uploadForm.fileName}
-                  onChange={(e) => setUploadForm({...uploadForm, fileName: e.target.value})}
-                  required
-                  placeholder="e.g., Resume_JohnDoe.pdf"
-                />
-              </div>
+            <div className="form-group">
+              <label>Document Type</label>
+              <select value={documentType} onChange={e => setDocumentType(e.target.value)}>
+                <option value="Resume">Resume</option>
+                <option value="Degree Certificate">Degree Certificate</option>
+                <option value="ID Proof">ID Proof</option>
+                <option value="Marksheet">Marksheet</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
 
-              <div className="form-group">
-                <label>Description (Optional)</label>
-                <textarea
-                  value={uploadForm.description}
-                  onChange={(e) => setUploadForm({...uploadForm, description: e.target.value})}
-                  placeholder="Add any notes about this document"
-                  rows="3"
-                />
-              </div>
+            <div className="form-group">
+              <label>Description (Optional)</label>
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                rows="3"
+              />
+            </div>
 
-              <button type="submit" className="btn-primary">
-                Upload & Encrypt
-              </button>
-              <hr style={{ margin: '20px 0' }} />
+            <div className="form-group">
+              <label>Attach PDF (Optional)</label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={e => setFile(e.target.files[0])}
+              />
+            </div>
 
-              <h4>OR Upload PDF Directly</h4>
+            <button type="submit" className="btn-primary">
+              Upload Securely
+            </button>
 
-              {pdfUploadError && (
-                <div className="error-message">{pdfUploadError}</div>
-              )}
+          </form>
 
-              {pdfUploadSuccess && (
-                <div className="success-message">{pdfUploadSuccess}</div>
-              )}
-
-              <div className="form-group">
-                <label>Select PDF File</label>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => setPdfFile(e.target.files[0])}
-                />
-              </div>
-
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handlePdfUpload}
-              >
-                Upload PDF Securely
-              </button>
-
-            </form>
 
             <div className="encryption-note">
               <strong>Note:</strong> Your document metadata will be encrypted using AES-256 and signed with SHA-256 hash for integrity verification.
@@ -250,13 +203,20 @@ const handlePdfUpload = async (e) => {
                       <h4>{doc.documentType}</h4>
                       <span className={`badge ${badge.class}`}>{badge.text}</span>
                     </div>
-                    <p className="doc-filename">{doc.fileName || 'Encrypted PDF Document'}</p>
+                    <p className="doc-filename">
+                      {doc.fileName ? doc.fileName : 'No file attached'}
+                    </p>
+
                     {doc.uploadMethod === 'pdf' && (
                     <p className="doc-detail">
                       <strong>Upload Type:</strong> Secure PDF Upload
                     </p>
                     )}
-                    <p className="doc-detail"><strong>Uploaded:</strong> {new Date(doc.uploadDate).toLocaleDateString()}</p>
+                    <p className="doc-detail">
+                      <strong>Uploaded:</strong>{' '}
+                      {doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : '—'}
+                    </p>
+
                     {doc.description && (
                       <p className="doc-detail"><strong>Description:</strong> {doc.description}</p>
                     )}

@@ -175,7 +175,10 @@ function OfficerDashboard({ user, onLogout }) {
                     <p><strong>Email:</strong> {doc.student?.email}</p>
                   </div>
 
-                  <p className="doc-filename">{doc.fileName}</p>
+                  <p className="doc-filename">
+                    {doc.fileName || 'Encrypted / No file name'}
+                  </p>
+
                   <p className="doc-detail"><strong>Uploaded:</strong> {new Date(doc.uploadDate).toLocaleDateString()}</p>
                   {doc.description && (
                     <p className="doc-detail"><strong>Description:</strong> {doc.description}</p>
@@ -185,7 +188,8 @@ function OfficerDashboard({ user, onLogout }) {
                     <span className="tag">🔓 Decrypted (AES-256)</span>
                     <span className="tag">✓ Signature Valid (SHA-256)</span>
                   </div>
-                  {doc.uploadMethod === 'pdf' && (
+                  {/* ===== PDF VIEW SECTION ===== */}
+                  {doc.uploadMethod === 'pdf' ? (
                     <button
                       className="btn-secondary"
                       onClick={() => viewPdf(doc._id)}
@@ -193,7 +197,12 @@ function OfficerDashboard({ user, onLogout }) {
                     >
                       📄 View / Download PDF
                     </button>
+                  ) : (
+                    <p style={{ marginTop: '10px', fontStyle: 'italic', color: '#888' }}>
+                      No file attached
+                    </p>
                   )}
+
 
 
                   {doc.verificationStatus === 'pending' ? (
