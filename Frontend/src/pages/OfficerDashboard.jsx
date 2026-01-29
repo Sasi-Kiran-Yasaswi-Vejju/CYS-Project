@@ -1,5 +1,5 @@
 // Officer/Admin Dashboard
-// Demonstrates: AUTHORIZATION (Officer/Admin-only access), Document Verification
+// Demonstrates: AUTHORIZATION (Officer/Admin-only access), Hybrid Decryption & Verification
 
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
@@ -27,10 +27,11 @@ function OfficerDashboard({ user, onLogout }) {
         api.get('/documents/all-documents'),
         api.get('/users/stats/overview')
       ]);
-      setDocuments(docsRes.data.documents);
-      setStats(statsRes.data.stats);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
+
+      setDocuments(docsRes.data.documents || []);
+      setStats(statsRes.data.stats || null);
+    } catch (err) {
+      console.error('Fetch failed:', err);
     } finally {
       setLoading(false);
     }
@@ -39,44 +40,43 @@ function OfficerDashboard({ user, onLogout }) {
   const handleVerify = async (docId) => {
     try {
       await api.patch(`/documents/${docId}/verify`, verifyForm);
-      alert(`Document ${verifyForm.status} successfully!`);
+      alert(`Document ${verifyForm.status} successfully`);
       setSelectedDoc(null);
       setVerifyForm({ status: 'verified', comments: '' });
       fetchData();
-    } catch (error) {
-      alert(error.response?.data?.error || 'Verification failed');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Verification failed');
     }
   };
+
   const viewPdf = async (docId) => {
     try {
-      const response = await api.get(`/documents/${docId}/pdf`, {
+      const res = await api.get(`/documents/${docId}/pdf`, {
         responseType: 'blob'
       });
 
-      const fileURL = window.URL.createObjectURL(
-        new Blob([response.data], { type: 'application/pdf' })
+      const url = URL.createObjectURL(
+        new Blob([res.data], { type: 'application/pdf' })
       );
 
-      window.open(fileURL, '_blank');
-    } catch (error) {
+      window.open(url, '_blank');
+    } catch (err) {
       alert('Failed to open PDF');
-      console.error(error);
     }
   };
 
-
   const getFilteredDocuments = () => {
     if (filter === 'all') return documents;
-    return documents.filter(doc => doc.verificationStatus === filter);
+    return documents.filter(d => d.verificationStatus === filter);
   };
 
   const getStatusBadge = (status) => {
-    const badges = {
+    const map = {
       pending: { class: 'badge-pending', text: 'Pending' },
       verified: { class: 'badge-verified', text: 'Verified ✓' },
       rejected: { class: 'badge-rejected', text: 'Rejected ✗' }
     };
-    return badges[status] || badges.pending;
+    return map[status] || map.pending;
   };
 
   const filteredDocs = getFilteredDocuments();
@@ -86,7 +86,7 @@ function OfficerDashboard({ user, onLogout }) {
       <header className="dashboard-header">
         <div>
           <h1>{user.role === 'admin' ? 'Admin' : 'Officer'} Dashboard</h1>
-          <p>Welcome, {user.name}!</p>
+          <p>Welcome, {user.name}</p>
         </div>
         <div className="header-actions">
           <Link to="/security-levels" className="btn-secondary">Security Info</Link>
@@ -95,6 +95,7 @@ function OfficerDashboard({ user, onLogout }) {
       </header>
 
       <div className="dashboard-content">
+
         {stats && (
           <div className="stats-grid">
             <div className="stat-card">
@@ -103,7 +104,7 @@ function OfficerDashboard({ user, onLogout }) {
             </div>
             <div className="stat-card pending">
               <h3>{stats.documents.pending}</h3>
-              <p>Pending Review</p>
+              <p>Pending</p>
             </div>
             <div className="stat-card verified">
               <h3>{stats.documents.verified}</h3>
@@ -117,109 +118,74 @@ function OfficerDashboard({ user, onLogout }) {
         )}
 
         <div className="security-info-box">
-          <h3>🔒 Access Control Active</h3>
-          <p><strong>Your Role:</strong> {user.role.toUpperCase()}</p>
-          <p><strong>Permissions:</strong> View all documents, Verify/Reject documents</p>
-          <p><strong>Note:</strong> All document data is decrypted server-side with authorization checks</p>
+          <h3>🔐 Hybrid Decryption Active</h3>
+          <p><strong>Role:</strong> {user.role.toUpperCase()}</p>
+          <p>AES keys are unwrapped using RSA private key (server-side)</p>
         </div>
 
         <div className="filter-section">
           <h2>Document Verification</h2>
           <div className="filter-buttons">
-            <button 
-              className={filter === 'all' ? 'active' : ''} 
-              onClick={() => setFilter('all')}
-            >
-              All ({documents.length})
-            </button>
-            <button 
-              className={filter === 'pending' ? 'active' : ''} 
-              onClick={() => setFilter('pending')}
-            >
-              Pending ({documents.filter(d => d.verificationStatus === 'pending').length})
-            </button>
-            <button 
-              className={filter === 'verified' ? 'active' : ''} 
-              onClick={() => setFilter('verified')}
-            >
-              Verified ({documents.filter(d => d.verificationStatus === 'verified').length})
-            </button>
-            <button 
-              className={filter === 'rejected' ? 'active' : ''} 
-              onClick={() => setFilter('rejected')}
-            >
-              Rejected ({documents.filter(d => d.verificationStatus === 'rejected').length})
-            </button>
+            {['all', 'pending', 'verified', 'rejected'].map(f => (
+              <button
+                key={f}
+                className={filter === f ? 'active' : ''}
+                onClick={() => setFilter(f)}
+              >
+                {f.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
 
         {loading ? (
           <p>Loading documents...</p>
         ) : filteredDocs.length === 0 ? (
-          <p className="no-data">No documents found.</p>
+          <p className="no-data">No documents found</p>
         ) : (
           <div className="documents-grid">
-            {filteredDocs.map((doc) => {
+            {filteredDocs.map(doc => {
               const badge = getStatusBadge(doc.verificationStatus);
+
               return (
                 <div key={doc._id} className="document-card">
                   <div className="doc-header">
-                    <h4>{doc.documentType}</h4>
+                    <h4>{doc.documentType || 'Document'}</h4>
                     <span className={`badge ${badge.class}`}>{badge.text}</span>
                   </div>
-                  
-                  <div className="student-info">
-                    <p><strong>Student:</strong> {doc.student?.name}</p>
-                    <p><strong>Student ID:</strong> {doc.student?.studentId}</p>
-                    <p><strong>Department:</strong> {doc.student?.department}</p>
-                    <p><strong>Email:</strong> {doc.student?.email}</p>
-                  </div>
 
-                  <p className="doc-filename">
-                    {doc.fileName || 'Encrypted / No file name'}
-                  </p>
+                  <p><strong>Student:</strong> {doc.student?.name}</p>
+                  <p><strong>Email:</strong> {doc.student?.email}</p>
+                  <p><strong>Uploaded:</strong> {doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : '—'}</p>
 
-                  <p className="doc-detail"><strong>Uploaded:</strong> {new Date(doc.uploadDate).toLocaleDateString()}</p>
                   {doc.description && (
-                    <p className="doc-detail"><strong>Description:</strong> {doc.description}</p>
+                    <p><strong>Description:</strong> {doc.description}</p>
                   )}
-                  
+
                   <div className="security-tags">
-                    <span className="tag">🔓 Decrypted (AES-256)</span>
-                    <span className="tag">✓ Signature Valid (SHA-256)</span>
+                    <span className="tag">AES-256</span>
+                    <span className="tag">RSA-2048</span>
+                    <span className="tag">SHA-256</span>
                   </div>
-                  {/* ===== PDF VIEW SECTION ===== */}
-                  {doc.uploadMethod === 'pdf' ? (
+
+                  {doc.uploadMethod === 'pdf' && (
                     <button
                       className="btn-secondary"
                       onClick={() => viewPdf(doc._id)}
-                      style={{ marginTop: '10px' }}
                     >
-                      📄 View / Download PDF
+                      📄 View PDF
                     </button>
-                  ) : (
-                    <p style={{ marginTop: '10px', fontStyle: 'italic', color: '#888' }}>
-                      No file attached
-                    </p>
                   )}
 
-
-
                   {doc.verificationStatus === 'pending' ? (
-                    <button 
-                      onClick={() => setSelectedDoc(doc)} 
+                    <button
                       className="btn-primary"
+                      onClick={() => setSelectedDoc(doc)}
                     >
-                      Review Document
+                      Review
                     </button>
                   ) : (
-                    <div className="verification-info">
-                      <p><strong>Verified By:</strong> {doc.verifier?.name}</p>
-                      <p><strong>Verified At:</strong> {new Date(doc.verifiedAt).toLocaleDateString()}</p>
-                      {doc.verifierComments && (
-                        <p><strong>Comments:</strong> {doc.verifierComments}</p>
-                      )}
-                    </div>
+                    <p><strong>Verified By:</strong> {doc.verifier?.name}</p>
                   )}
                 </div>
               );
@@ -229,59 +195,50 @@ function OfficerDashboard({ user, onLogout }) {
 
         {selectedDoc && (
           <div className="modal-overlay" onClick={() => setSelectedDoc(null)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
               <h2>Verify Document</h2>
-              
-              <div className="doc-details">
-                <p><strong>Document Type:</strong> {selectedDoc.documentType}</p>
-                <p><strong>File Name:</strong> {selectedDoc.fileName}</p>
-                <p><strong>Student:</strong> {selectedDoc.student?.name} ({selectedDoc.student?.studentId})</p>
-                <p><strong>Email:</strong> {selectedDoc.student?.email}</p>
-                {selectedDoc.description && (
-                  <p><strong>Description:</strong> {selectedDoc.description}</p>
-                )}
+
+              <p><strong>Document:</strong> {selectedDoc.documentType}</p>
+              <p><strong>Student:</strong> {selectedDoc.student?.name}</p>
+
+              <div className="form-group">
+                <label>Decision</label>
+                <select
+                  value={verifyForm.status}
+                  onChange={e => setVerifyForm({ ...verifyForm, status: e.target.value })}
+                >
+                  <option value="verified">Verify</option>
+                  <option value="rejected">Reject</option>
+                </select>
               </div>
 
-              <div className="verify-form">
-                <div className="form-group">
-                  <label>Decision</label>
-                  <select 
-                    value={verifyForm.status}
-                    onChange={(e) => setVerifyForm({...verifyForm, status: e.target.value})}
-                  >
-                    <option value="verified">Verify</option>
-                    <option value="rejected">Reject</option>
-                  </select>
-                </div>
+              <div className="form-group">
+                <label>Comments</label>
+                <textarea
+                  rows="3"
+                  value={verifyForm.comments}
+                  onChange={e => setVerifyForm({ ...verifyForm, comments: e.target.value })}
+                />
+              </div>
 
-                <div className="form-group">
-                  <label>Comments</label>
-                  <textarea
-                    value={verifyForm.comments}
-                    onChange={(e) => setVerifyForm({...verifyForm, comments: e.target.value})}
-                    placeholder="Add verification comments..."
-                    rows="4"
-                  />
-                </div>
-
-                <div className="modal-actions">
-                  <button 
-                    onClick={() => handleVerify(selectedDoc._id)}
-                    className="btn-primary"
-                  >
-                    Submit Verification
-                  </button>
-                  <button 
-                    onClick={() => setSelectedDoc(null)}
-                    className="btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                </div>
+              <div className="modal-actions">
+                <button
+                  className="btn-primary"
+                  onClick={() => handleVerify(selectedDoc._id)}
+                >
+                  Submit
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setSelectedDoc(null)}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
