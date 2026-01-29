@@ -7,7 +7,7 @@ It demonstrates the **practical implementation of cyber security concepts** usin
 
 ## 🔐 Project Objective
 
-To design and implement a **secure document management system** that ensures:
+To design and implement a **secure placement drive document management system** that ensures:
 
 - Confidentiality of data  
 - Integrity of documents  
@@ -41,7 +41,8 @@ cys/
 │ ├── utils/ # Encryption & security logic
 │ ├── authMiddleware.js # JWT-based route protection
 │ ├── server.js # Express server entry point
-│ └── .env # Environment variables
+│ ├── .env # Environment variables
+| └── Keys #Generated Keys public and private
 │
 ├── Frontend/
 │ ├── src/
